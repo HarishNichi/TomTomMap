@@ -36,8 +36,8 @@ const EvacuationMap = ({ height = '100vh' }) => {
     { id: 10, name: "Indiranagar Colony Hall", location: "Indiranagar, Bengaluru", position: { lat: 12.9772, lng: 77.6433 }, status: "closed", capacity: "Full", image: "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=400&q=80", type: "Private Refuge" }
   ]);
   
-  // State for active route segments
-  const [routeData, setRouteData] = useState({ id: 0, segments: [] });
+  // State for active route segments and directions
+  const [routeData, setRouteData] = useState({ id: 0, segments: [], instructions: [] });
   const [selectedShelter, setSelectedShelter] = useState(null);
   const [hoveredMarker, setHoveredMarker] = useState(null);
   const [hoveredIncident, setHoveredIncident] = useState(null);
@@ -100,7 +100,7 @@ const EvacuationMap = ({ height = '100vh' }) => {
 
   useEffect(() => {
     fetchIncidents();
-    const interval = setInterval(fetchIncidents, 60000);
+    const interval = setInterval(fetchIncidents, 600000);
     return () => clearInterval(interval);
   }, [fetchIncidents]);
 
@@ -114,27 +114,36 @@ const EvacuationMap = ({ height = '100vh' }) => {
     setLoadingRoute(true);
     setSelectedShelter(shelter);
     // Explicitly clear current route to ensure no overlap if next one fails
-    setRouteData({ id: 0, segments: [] });
+    setRouteData({ id: 0, segments: [], instructions: [] });
 
     try {
       const apiKey = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
       const start = `${startPos.lat},${startPos.lng}`;
       const end = `${shelter.position.lat},${shelter.position.lng}`;
       
-      // Request detailed traffic and incident sections
-      const url = `https://api.tomtom.com/routing/1/calculateRoute/${start}:${end}/json?key=${apiKey}&traffic=true&routeType=fastest&sectionType=traffic`;
+      // Request detailed traffic and incident sections, plus turn-by-turn text guidance
+      const url = `https://api.tomtom.com/routing/1/calculateRoute/${start}:${end}/json?key=${apiKey}&traffic=true&routeType=fastest&sectionType=traffic&instructionsType=text&language=en-GB`;
       
       const response = await axios.get(url, { signal: abortControllerRef.current.signal });
       if (response.data?.routes?.[0]) {
         const route = response.data.routes[0];
-        const points = route.legs[0].points;
+        const points = route.legs?.[0]?.points || [];
         const sections = route.sections || [];
-        const segments = [];
+        let segments = [];
+
+        // Always draw the base route (Clear/Blue) beneath everything
+        if (points.length > 0) {
+            segments.push({ 
+                id: `seg-base`,
+                path: points.map(p => ({ lat: p.latitude, lng: p.longitude })), 
+                color: "#3b82f6" 
+            });
+        }
 
         if (sections.length > 0) {
-            sections.forEach((sec) => {
+            sections.forEach((sec, idx) => {
                 const sectionPoints = points.slice(sec.startPointIndex, sec.endPointIndex + 1).map(p => ({ lat: p.latitude, lng: p.longitude }));
-                let color = "#3b82f6"; // Default Blue (Clear)
+                let color = "transparent"; // Default no overlay unless traffic
                 
                 // Color based on traffic magnitude/delay
                 if (sec.sectionType === "TRAFFIC" || (sec.delayInSeconds && sec.delayInSeconds > 0)) {
@@ -142,14 +151,18 @@ const EvacuationMap = ({ height = '100vh' }) => {
                     else if (sec.delayInSeconds > 10) color = "#f59e0b"; // Orange (Moderate)
                 }
                 
-                segments.push({ path: sectionPoints, color });
+                if(color !== "transparent") {
+                    segments.push({ 
+                        id: `seg-${idx}`,
+                        path: sectionPoints, 
+                        color 
+                    });
+                }
             });
-        } else {
-            // Fallback: If no sections provided, use all points with default blue
-            segments.push({ path: points.map(p => ({ lat: p.latitude, lng: p.longitude })), color: "#3b82f6" });
         }
 
-        setRouteData({ id: Date.now(), segments });
+        const instructions = route.guidance?.instructions || [];
+        setRouteData({ id: 1, segments, instructions });
         if (map) {
             const bounds = new window.google.maps.LatLngBounds();
             points.forEach(p => bounds.extend({ lat: p.latitude, lng: p.longitude }));
@@ -291,40 +304,77 @@ const EvacuationMap = ({ height = '100vh' }) => {
             />
           </div>
 
-          {/* Shelter List */}
+          {/* Sidebar Content Switcher */}
           <ScrollPanel style={{ width: '100%', height: 'calc(100vh - 150px)' }} className="custom-scrollbar">
-            <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {filteredShelters.map(shelter => {
-                const isSelected = selectedShelter?.id === shelter.id;
-                return (
-                  <div 
-                    key={shelter.id}
-                    className={`shelter-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => calculateRoute(shelter)}
-                    style={{ padding: '10px', cursor: 'pointer', display: 'flex', gap: '10px' }}
-                  >
-                    <div style={{ width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#f1f5f9' }}>
-                      <img src={shelter.image} alt={shelter.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = 'https://placehold.co/400x400?text=Shelter'; }} />
+            {routeData.instructions && routeData.instructions.length > 0 ? (
+              <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button 
+                  onClick={() => { setRouteData({ id: 0, segments: [], instructions: [] }); setSelectedShelter(null); }}
+                  style={{ background: 'transparent', border: 'none', color: '#3b82f6', fontWeight: '600', cursor: 'pointer', textAlign: 'left', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginBottom: '4px' }}
+                >
+                  <span style={{ fontSize: '14px' }}>←</span> Back to Shelters
+                </button>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b', letterSpacing: '-0.2px' }}>
+                  Directions to {selectedShelter?.name}
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+                  Step-by-step guidance
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {routeData.instructions.map((inst, idx) => (
+                    <div key={idx} style={{ padding: '12px', background: '#f8f9fb', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.04)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{ background: '#e0e7ff', color: '#3b82f6', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                        {idx + 1}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '12.5px', color: '#334155', fontWeight: '500', lineHeight: '1.4' }}>
+                          {inst.message}
+                        </div>
+                        {inst.routeOffsetInMeters > 0 && (
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontWeight: '600' }}>
+                            Distance to next step: {inst.routeOffsetInMeters > 1000 ? (inst.routeOffsetInMeters/1000).toFixed(1) + ' km' : inst.routeOffsetInMeters + ' m'}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden', minWidth: 0 }}>
-                      <div>
-                        <div style={{ fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', color: isSelected ? '#2563eb' : '#94a3b8', letterSpacing: '0.5px', marginBottom: '1px' }}>{shelter.type}</div>
-                        <div style={{ fontSize: '12px', fontWeight: '700', color: isSelected ? '#1e3a8a' : '#1e293b', lineHeight: '1.3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shelter.name}</div>
-                        <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <span style={{ fontSize: '9px' }}>📍</span> {shelter.location}
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {filteredShelters.map(shelter => {
+                  const isSelected = selectedShelter?.id === shelter.id;
+                  return (
+                    <div 
+                      key={shelter.id}
+                      className={`shelter-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => calculateRoute(shelter)}
+                      style={{ padding: '10px', cursor: 'pointer', display: 'flex', gap: '10px' }}
+                    >
+                      <div style={{ width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#f1f5f9' }}>
+                        <img src={shelter.image} alt={shelter.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = 'https://placehold.co/400x400?text=Shelter'; }} />
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden', minWidth: 0 }}>
+                        <div>
+                          <div style={{ fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', color: isSelected ? '#2563eb' : '#94a3b8', letterSpacing: '0.5px', marginBottom: '1px' }}>{shelter.type}</div>
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: isSelected ? '#1e3a8a' : '#1e293b', lineHeight: '1.3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shelter.name}</div>
+                          <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <span style={{ fontSize: '9px' }}>📍</span> {shelter.location}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                          <span className={`status-badge ${shelter.status === 'open' ? 'status-open' : (shelter.status === 'crowded' ? 'status-limited' : 'status-closed')}`}>
+                            {shelter.status === 'open' ? '● Available' : (shelter.status === 'crowded' ? '● Limited' : '● Closed')}
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600' }}>{shelter.capacity}</span>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                        <span className={`status-badge ${shelter.status === 'open' ? 'status-open' : (shelter.status === 'crowded' ? 'status-limited' : 'status-closed')}`}>
-                          {shelter.status === 'open' ? '● Available' : (shelter.status === 'crowded' ? '● Limited' : '● Closed')}
-                        </span>
-                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600' }}>{shelter.capacity}</span>
-                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </ScrollPanel>
         </div>
 
@@ -341,6 +391,7 @@ const EvacuationMap = ({ height = '100vh' }) => {
           )}
 
           <GoogleMap
+            key={routeData.id || 'initial-map'}
             mapContainerStyle={{ width: '100%', height: '100%' }}
             center={userLocation || BENGALURU_CENTER}
             zoom={13}
@@ -435,19 +486,21 @@ const EvacuationMap = ({ height = '100vh' }) => {
           })()}
 
           {/* ACTIVE ROUTE SEGMENTS - Multi-colored for traffic */}
-          {routeData.segments.map((seg, idx) => (
-            <Polyline
-              key={`route-seg-${routeData.id}-${idx}`}
-              path={seg.path}
-              options={{
-                strokeColor: seg.color,
-                strokeOpacity: 1,
-                strokeWeight: 10,
-                zIndex: 145,
-                geodesic: true
-              }}
-            />
-          ))}
+          <React.Fragment key={routeData.id || 'no-route'}>
+            {routeData.segments && routeData.segments.map((seg) => (
+              <Polyline
+                key={seg.id}
+                path={seg.path}
+                options={{
+                  strokeColor: seg.color,
+                  strokeOpacity: 1,
+                  strokeWeight: 10,
+                  zIndex: 145,
+                  geodesic: true
+                }}
+              />
+            ))}
+          </React.Fragment>
 
           {/* TomTom v5 Incidents - Filtered by activeFilters */}
           {incidents.filter(inc => activeFilters.includes(inc.properties?.iconCategory)).map((incident, idx) => {
