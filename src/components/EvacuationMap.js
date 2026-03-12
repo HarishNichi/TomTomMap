@@ -42,7 +42,7 @@ const EvacuationMap = ({ height = '100vh' }) => {
   const [hoveredMarker, setHoveredMarker] = useState(null);
   const [hoveredIncident, setHoveredIncident] = useState(null);
   const [loadingRoute, setLoadingRoute] = useState(false);
-  const [activeFilters, setActiveFilters] = useState([0,1,2,3,4,5,6,7,8,9,10,11,14]); // All incident categories on by default
+  const [activeFilters, setActiveFilters] = useState([8]); // Only Road Closed by default
   
   // Ref for AbortController
   const abortControllerRef = React.useRef(null);
@@ -113,6 +113,7 @@ const EvacuationMap = ({ height = '100vh' }) => {
 
     setLoadingRoute(true);
     setSelectedShelter(shelter);
+    setHoveredMarker(shelter); // Automatically open InfoWindow
     // Explicitly clear current route to ensure no overlap if next one fails
     setRouteData({ id: 0, segments: [], instructions: [] });
 
@@ -315,17 +316,38 @@ const EvacuationMap = ({ height = '100vh' }) => {
                   >
                     <span style={{ fontSize: '14px' }}>←</span> Back
                   </button>
+                </div>
+                <div style={{ padding: '4px', background: '#f0f9ff', borderRadius: '12px', border: '1px solid #bae6fd', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', gap: '10px', padding: '8px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
+                      <img src={selectedShelter?.image} alt={selectedShelter?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedShelter?.name}</div>
+                      <div style={{ fontSize: '10px', color: '#64748b' }}>{selectedShelter?.location}</div>
+                      <div className={`status-badge ${selectedShelter?.status === 'open' ? 'status-open' : (selectedShelter?.status === 'crowded' ? 'status-limited' : 'status-closed')}`} style={{ marginTop: '4px', display: 'inline-block' }}>
+                        {selectedShelter?.status === 'open' ? '● Available' : (selectedShelter?.status === 'crowded' ? '● Limited' : '● Closed')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
                   <button 
                     onClick={() => window.location.href = `/ride?destLat=${selectedShelter.position.lat}&destLng=${selectedShelter.position.lng}&name=${encodeURIComponent(selectedShelter.name)}`}
-                    style={{ background: '#2563eb', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(37,99,235,0.3)' }}
+                    style={{ flex: 1, background: '#2563eb', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(37,99,235,0.3)' }}
                   >
                     🚀 Start Ride
                   </button>
+                  <button 
+                    onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedShelter.position.lat},${selectedShelter.position.lng}`, '_blank')}
+                    style={{ flex: 1, background: '#fff', color: '#374151', border: '1px solid #d1d5db', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    🌐 Google Maps
+                  </button>
                 </div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b', letterSpacing: '-0.2px', marginTop: '6px' }}>
-                  Directions to {selectedShelter?.name}
-                </div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+
+                <div style={{ fontSize: '13px', fontWeight: '800', color: '#1e293b', letterSpacing: '-0.2px' }}>
                   Step-by-step guidance
                 </div>
                 
