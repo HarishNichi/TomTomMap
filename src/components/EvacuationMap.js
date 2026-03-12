@@ -308,13 +308,21 @@ const EvacuationMap = ({ height = '100vh' }) => {
           <ScrollPanel style={{ width: '100%', height: 'calc(100vh - 150px)' }} className="custom-scrollbar">
             {routeData.instructions && routeData.instructions.length > 0 ? (
               <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button 
-                  onClick={() => { setRouteData({ id: 0, segments: [], instructions: [] }); setSelectedShelter(null); }}
-                  style={{ background: 'transparent', border: 'none', color: '#3b82f6', fontWeight: '600', cursor: 'pointer', textAlign: 'left', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginBottom: '4px' }}
-                >
-                  <span style={{ fontSize: '14px' }}>←</span> Back to Shelters
-                </button>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b', letterSpacing: '-0.2px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <button 
+                    onClick={() => { setRouteData({ id: 0, segments: [], instructions: [] }); setSelectedShelter(null); }}
+                    style={{ background: 'transparent', border: 'none', color: '#64748b', fontWeight: '600', cursor: 'pointer', textAlign: 'left', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                  >
+                    <span style={{ fontSize: '14px' }}>←</span> Back
+                  </button>
+                  <button 
+                    onClick={() => window.location.href = `/ride?destLat=${selectedShelter.position.lat}&destLng=${selectedShelter.position.lng}&name=${encodeURIComponent(selectedShelter.name)}`}
+                    style={{ background: '#2563eb', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(37,99,235,0.3)' }}
+                  >
+                    🚀 Start Ride
+                  </button>
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b', letterSpacing: '-0.2px', marginTop: '6px' }}>
                   Directions to {selectedShelter?.name}
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
